@@ -51,28 +51,28 @@
 #
 #-----------------------------------------------------------
 
-EXTRACT_DIR=/lfs/h2/emc/stmp/$USER/gdas.init/input
-EXTRACT_DATA=no
+EXTRACT_DIR=/gpfs/f6/drsa-precip4/scratch/Yanjun.Gan/gfs/rotdir/ICSDIR/input
+EXTRACT_DATA=yes
 
 RUN_CHGRES=yes
 
 yy=2022
-mm=01
+mm=10
 dd=01
-hh=06
+hh=00
 
 use_v16retro=no
 
 LEVS=128
 
-CDUMP=gfs
+CDUMP=gdas
 
 CRES_HIRES=C192
-CRES_ENKF=C96
+CRES_ENKF=C192
 
 UFS_DIR=$PWD/../..
 
-OUTDIR=/lfs/h2/emc/stmp/$USER/gdas.init/output
+OUTDIR=/gpfs/f6/drsa-precip4/scratch/Yanjun.Gan/gfs/rotdir/ICSDIR/output
 #---------------------------------------------------------
 # Dont touch anything below here.
 #---------------------------------------------------------

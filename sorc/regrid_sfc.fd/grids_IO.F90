@@ -18,8 +18,10 @@
                                 vtype_water=17, & !< water
                                 vtype_landice=15 !< land ice
  ! mask values for soilsnow_mask calculated in the GSI EnKF
- integer, public, parameter  :: mtype_water=0, & !< water
-                                mtype_snow=2     !< snow
+ integer, public, parameter  :: mtype_water=0,  & !< water
+                                mtype_snow1=-1, & !< 1-layer snow
+                                mtype_snow2=-2, & !< 2-layer snow
+                                mtype_snow3=-3    !< 3-layer snow
  type, public  :: grid_setup_type
         character(7)   :: descriptor       !< options: gau_inc fv3_rst 
         character(100) :: fname            !< file name
@@ -130,14 +132,16 @@
  ptr_mask = 1 ! initialize land everywhere
  select case (trim(grid_setup%mask_variable(1)))
  case("vegetation_type") ! removing non-land, water, and glaciers using veg class
-     where (nint(ptr_maskvar) == vtype_nonland)   ptr_mask = 0 ! exclude non-land
-     where (nint(ptr_maskvar) == vtype_water )   ptr_mask = 0 ! exclude water
-     where (nint(ptr_maskvar) == vtype_landice ) ptr_mask = 0 ! exclude glaciers
+     where (nint(ptr_maskvar) == vtype_nonland)  ptr_mask = vtype_nonland
+     where (nint(ptr_maskvar) == vtype_water )   ptr_mask = vtype_water
+     where (nint(ptr_maskvar) == vtype_landice ) ptr_mask = vtype_landice 
  case("soilsnow_mask") ! removing snow and non-land using pre-computed mask
-     where (nint(ptr_maskvar) == mtype_water )   ptr_mask = 0 ! exclude non-soil
-     where (nint(ptr_maskvar) == mtype_snow ) ptr_mask = 0 ! exclude snow
+     where (nint(ptr_maskvar) == mtype_water)   ptr_mask = mtype_water
+     where (nint(ptr_maskvar) == mtype_snow1)   ptr_mask = mtype_snow1
+     where (nint(ptr_maskvar) == mtype_snow2)   ptr_mask = mtype_snow2
+     where (nint(ptr_maskvar) == mtype_snow3)   ptr_mask = mtype_snow3
  case default
-    call error_handler("unknown mask_variable", 1)
+     call error_handler("unknown mask_variable", 1)
  end select
 
 ! destroy mask field
@@ -177,6 +181,8 @@
  ! LOCAL
  integer                         :: tt, id_var, ncid, ierr, v, j
  integer                         :: n_files
+ integer                         :: idx1, idx2, idx3
+ logical                         :: has_snowt1, has_snowt2, has_snowt3
  character(len=1)                :: tchar
  character(len=500)              :: fname
  real(esmf_kind_r8), allocatable :: array2D(:,:)
@@ -232,7 +238,41 @@
             deallocate(temp_array)
          endif
 
+         ! Search for the indices of snowt1_inc, snowt2_inc, and snowt3_inc
+         has_snowt1 = .false.
+         has_snowt2 = .false.
+         has_snowt3 = .false.
+
+         do v = 1, n_vars
+             if (trim(variable_list(v)) == 'snowt1_inc') then
+                 has_snowt1 = .true.
+                 idx1 = v
+             elseif (trim(variable_list(v)) == 'snowt2_inc') then
+                 has_snowt2 = .true.
+                 idx2 = v
+             elseif (trim(variable_list(v)) == 'snowt3_inc') then
+                 has_snowt3 = .true.
+                 idx3 = v
+             endif
+         end do
+
+         ! If all three variables exist, save increments from the upper-most layers to the third layer
+         ! The upper-most layer could be:
+         !      - 1st layer for 1-layer snow,
+         !      - 2nd layer for 2-layer snow,
+         !      - 3rd layer for 3-layer snow.
+         if (has_snowt1 .and. has_snowt2 .and. has_snowt3) then
+             where (array_in(idx3, :, :) == 0.0 .and. array_in(idx2, :, :) /= 0.0)
+                 array_in(idx3, :, :) = array_in(idx2, :, :)
+             end where
+             where (array_in(idx3, :, :) == 0.0 .and. array_in(idx2, :, :) == 0.0 .and. array_in(idx1, :, :) /= 0.0)
+                 array_in(idx3, :, :) = array_in(idx1, :, :)
+             end where
+             array_in(idx1, :, :) = 0  ! Reset the 1st layer increments
+             array_in(idx2, :, :) = 0  ! Reset the 2nd layer increments
+         end if
       endif
+
       ! scatter
       do v =1, n_vars
           array2D=array_in(v,:,:) ! scatter misbehaves if given indexed 3D array.

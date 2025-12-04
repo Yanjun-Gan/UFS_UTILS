@@ -1,6 +1,6 @@
 &config
   n_vars=@[n_vars],
-  variable_list=@[soil_incr_vars]
+  variable_list=@[variable_list]
   missing_value=0.,
   time_list=@[time_list],
   add_time_dim=@[add_time_dim], 

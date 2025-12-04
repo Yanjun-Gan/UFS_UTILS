@@ -17,7 +17,7 @@ module list
 # Needed for NDATE utility
 module load prod_util/2.1.1
 
-PROJECT_CODE=drsa-hurr1
+PROJECT_CODE=drsa-precip4
 QUEUE_dtn=hpss
 QUEUE=normal
 

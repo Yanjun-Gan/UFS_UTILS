@@ -22,6 +22,7 @@
  implicit none
 
  integer, parameter             :: max_vars = 10  !< increase if wish to specify more variables
+ integer, allocatable           :: src_mask(:), dst_mask(:)
 
  ! namelist inputs
  character(len=15)              :: variable_list(max_vars)
@@ -58,9 +59,6 @@
 !-------------------------------------------------------------------------
 
  call cpu_time(t1)
-
-
- ! intialize mpi
 
  call mpi_init(ierr)
  if (ierr .ne. MPI_SUCCESS) call error_handler("mpi_init", ierr)
@@ -201,39 +199,63 @@
                                  grid_setup_in, n_vars, variable_list(1:n_vars), fields_in(t,:))
  enddo
 
- call cpu_time(t2)
-!------------------------
-! regrid the input fields to the output grid
-
- if (subpet==0) print*,'** Performing regridding for ensemble member', imem_ens
-
- SRCTERM=1
- ! get regriding route for a field (only uses the grid info in the field)
- ! to turn off masking, remove [src/dstMaskVales] argumemnts
- call ESMF_FieldRegridStore(srcField=fields_in(1,1), srcMaskValues=(/0/), &
-                            dstField=fields_out(1,1), dstMaskValues=(/0/), &
-                            ! allow unmapped grid cells, without returning error
-                            unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, &
-                            polemethod=ESMF_POLEMETHOD_ALLAVG, &
-                            ! fill un-mapped grid cells with a neighbour
-                            extrapMethod=ESMF_EXTRAPMETHOD_CREEP, &
-                            ! number of "levels" of neighbours to search for a value
-                            extrapNumLevels=extrap_levs, &
-                            ! needed for reproducibility
-                            ! (combined with ESMF_TERMORDER_SRCSEQ below)
-                            srctermprocessing=SRCTERM, &
-                            routehandle=regrid_route, &
-                            ! use bilinear interp (slightly better results than PATCH)
-                            regridmethod=ESMF_REGRIDMETHOD_BILINEAR, rc=ierr)
- if(ESMF_logFoundError(rcToCheck=ierr,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
-    call error_handler("IN FieldRegridStore", ierr)
-
-! do the re-gridding
-
- call cpu_time(t3)
-
  do t=1, n_tims
      do v=1, n_vars
+        !------------------------
+        ! regrid the input fields to the output grid
+
+         call cpu_time(t2)
+
+         if (subpet==0) print*,'** Performing regridding for ensemble member', imem_ens
+
+         ! mask values for input
+         if (allocated(src_mask)) deallocate(src_mask)
+         allocate(src_mask(4))
+         select case (trim(variable_list(v)))
+            case ("soilt1_inc","soilt2_inc","soilt3_inc","soilt4_inc","slc1_inc","slc2_inc","slc3_inc","slc4_inc")
+               src_mask = (/0,-1,-2,-3/)
+            case ("snowt1_inc")
+               src_mask = (/0/)
+            case ("snowt2_inc")
+               src_mask = (/0/)
+            case ("snowt3_inc")
+               src_mask = (/0/)
+            case default
+               print*, "Warning: No such variable - ", trim(variable_list(v))
+         end select
+         print*, "Variable: ", trim(variable_list(v))
+         print*, "srcMaskValues: ", src_mask
+
+         ! mask values for output
+         if (allocated(dst_mask)) deallocate(dst_mask)
+         allocate(dst_mask(3))
+         dst_mask = (/0,15,17/)
+
+         SRCTERM=1
+         ! get regriding route for a field (only uses the grid info in the field)
+         ! to turn off masking, remove [src/dstMaskVales] argumemnts
+         call ESMF_FieldRegridStore(srcField=fields_in(t,v), srcMaskValues=src_mask, &
+                                    dstField=fields_out(t,v), dstMaskValues=dst_mask, &
+                                    ! allow unmapped grid cells, without returning error
+                                    unmappedaction=ESMF_UNMAPPEDACTION_IGNORE, &
+                                    polemethod=ESMF_POLEMETHOD_ALLAVG, &
+                                    ! fill un-mapped grid cells with a neighbour
+                                    extrapMethod=ESMF_EXTRAPMETHOD_CREEP, &
+                                    ! number of "levels" of neighbours to search for a value
+                                    extrapNumLevels=extrap_levs, &
+                                    ! needed for reproducibility
+                                    ! (combined with ESMF_TERMORDER_SRCSEQ below)
+                                    srctermprocessing=SRCTERM, &
+                                    routehandle=regrid_route, &
+                                    ! use bilinear interp (slightly better results than PATCH)
+                                    regridmethod=ESMF_REGRIDMETHOD_BILINEAR, rc=ierr)
+         if(ESMF_logFoundError(rcToCheck=ierr,msg=ESMF_LOGERR_PASSTHRU,line=__LINE__,file=__FILE__)) &
+            call error_handler("IN FieldRegridStore", ierr)
+
+         ! do the re-gridding
+
+         call cpu_time(t3)
+
          call ESMF_FieldRegrid(fields_in(t,v), &
                                fields_out(t,v), &
                                routehandle=regrid_route, &
